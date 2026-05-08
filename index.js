@@ -23,6 +23,18 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'Delight Proxy' });
 });
 
+// ── CLARI: Get users ──
+app.get('/clari/users', async (req, res) => {
+  try {
+    const response = await fetch(`${CLARI_BASE}/users`, { headers: CLARI_HEADERS });
+    const text = await response.text();
+    if (!response.ok) return res.status(response.status).json({ error: text });
+    res.json(JSON.parse(text));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── CLARI: List calls ──
 app.get('/clari/calls', async (req, res) => {
   try {
