@@ -23,6 +23,19 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'Delight Proxy' });
 });
 
+// ── DEBUG: See raw call structure ──
+app.get('/clari/debug', async (req, res) => {
+  try {
+    const url = `${CLARI_BASE}/calls?limit=1&filterStatus=POST_PROCESSING_DONE`;
+    const response = await fetch(url, { headers: CLARI_HEADERS });
+    const text = await response.text();
+    res.setHeader('Content-Type', 'application/json');
+    res.send(text);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── CLARI: Get users ──
 app.get('/clari/users', async (req, res) => {
   try {
@@ -38,13 +51,27 @@ app.get('/clari/users', async (req, res) => {
 // ── CLARI: List calls ──
 app.get('/clari/calls', async (req, res) => {
   try {
-    const { from, limit = 25 } = req.query;
-    let url = `${CLARI_BASE}/calls?limit=${limit}`;
-    if (from) url += `&from_time=${from}`;
+    const { from, limit = 50, user_id } = req.query;
+    let url = `${CLARI_BASE}/calls?limit=${limit}&filterStatus=POST_PROCESSING_DONE&sortTime=desc`;
+    if (from) url += `&filterTimeGt=${from}`;
     const response = await fetch(url, { headers: CLARI_HEADERS });
     const text = await response.text();
     if (!response.ok) return res.status(response.status).json({ error: text });
-    res.json(JSON.parse(text));
+    const data = JSON.parse(text);
+    
+    // Filter by user_id (Clari user ID) if provided
+    if (user_id && data.calls) {
+      data.calls = data.calls.filter(call => {
+        const participants = call.users || call.participants || call.internal_participants || [];
+        return participants.some(p => 
+          p.id === user_id || 
+          p.user_id === user_id ||
+          p.userId === user_id
+        );
+      });
+    }
+    
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
