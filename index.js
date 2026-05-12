@@ -90,11 +90,19 @@ app.get('/clari/calls', async (req, res) => {
 // ── DEBUG: See raw call details ──
 app.get('/clari/debug-call/:callId', async (req, res) => {
   try {
-    const url = `${CLARI_BASE}/call-transcript?id=${req.params.callId}`;
-    const response = await fetch(url, { headers: CLARI_HEADERS });
-    const text = await response.text();
-    res.setHeader('Content-Type', 'application/json');
-    res.send(JSON.stringify({ status: response.status, url, body: text.slice(0, 3000) }));
+    const endpoints = [
+      `${CLARI_BASE}/calls/${req.params.callId}/transcript`,
+      `${CLARI_BASE}/calls/${req.params.callId}`,
+      `${CLARI_BASE}/call-details?callId=${req.params.callId}`,
+      `${CLARI_BASE}/transcripts?callId=${req.params.callId}`,
+    ];
+    const results = {};
+    for (const url of endpoints) {
+      const response = await fetch(url, { headers: CLARI_HEADERS });
+      const text = await response.text();
+      results[url] = { status: response.status, body: text.slice(0, 500) };
+    }
+    res.json(results);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
