@@ -91,16 +91,16 @@ app.get('/clari/calls', async (req, res) => {
 app.get('/clari/debug-call/:callId', async (req, res) => {
   try {
     const endpoints = [
-      `${CLARI_BASE}/calls/${req.params.callId}/transcript`,
-      `${CLARI_BASE}/calls/${req.params.callId}`,
-      `${CLARI_BASE}/call-details?callId=${req.params.callId}`,
-      `${CLARI_BASE}/transcripts?callId=${req.params.callId}`,
+      `${CLARI_BASE}/call-details?id=${req.params.callId}`,
+      `${CLARI_BASE}/call-transcript?callId=${req.params.callId}`,
+      `${CLARI_BASE}/transcript?id=${req.params.callId}`,
+      `${CLARI_BASE}/calls?id=${req.params.callId}`,
     ];
     const results = {};
     for (const url of endpoints) {
       const response = await fetch(url, { headers: CLARI_HEADERS });
       const text = await response.text();
-      results[url] = { status: response.status, body: text.slice(0, 500) };
+      results[url] = { status: response.status, body: text.slice(0, 800) };
     }
     res.json(results);
   } catch (e) {
