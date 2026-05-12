@@ -51,27 +51,37 @@ app.get('/clari/users', async (req, res) => {
 // ── CLARI: List calls ──
 app.get('/clari/calls', async (req, res) => {
   try {
-    const { from, limit = 50, user_id } = req.query;
-    let url = `${CLARI_BASE}/calls?limit=${limit}&filterStatus=POST_PROCESSING_DONE&sortTime=desc`;
-    if (from) url += `&filterTimeGt=${from}`;
-    const response = await fetch(url, { headers: CLARI_HEADERS });
-    const text = await response.text();
-    if (!response.ok) return res.status(response.status).json({ error: text });
-    const data = JSON.parse(text);
-    
-    // Filter by user_id (Clari user ID) if provided
-    if (user_id && data.calls) {
-      data.calls = data.calls.filter(call => {
-        const participants = call.users || call.participants || call.internal_participants || [];
-        return participants.some(p => 
-          p.id === user_id || 
-          p.user_id === user_id ||
-          p.userId === user_id
-        );
-      });
+    const { from, user_id } = req.query;
+    let allCalls = [];
+    let skip = 0;
+    const batchSize = 100;
+    const maxCalls = 500;
+
+    while (allCalls.length < maxCalls) {
+      let url = `${CLARI_BASE}/calls?limit=${batchSize}&skip=${skip}&filterStatus=POST_PROCESSING_DONE&sortTime=desc`;
+      if (from) url += `&filterTimeGt=${from}`;
+      const response = await fetch(url, { headers: CLARI_HEADERS });
+      if (!response.ok) {
+        const text = await response.text();
+        return res.status(response.status).json({ error: text });
+      }
+      const data = await response.json();
+      const calls = data.calls || [];
+      if (!calls.length) break;
+
+      // Filter by userId if provided
+      const filtered = user_id
+        ? calls.filter(call => (call.users || []).some(u => u.userId === user_id))
+        : calls;
+
+      allCalls = allCalls.concat(filtered);
+
+      // Stop if we have enough filtered results or no more pages
+      if (!data.pagination?.hasMore || allCalls.length >= 25) break;
+      skip += batchSize;
     }
-    
-    res.json(data);
+
+    res.json({ calls: allCalls.slice(0, 25) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
