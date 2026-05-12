@@ -87,14 +87,59 @@ app.get('/clari/calls', async (req, res) => {
   }
 });
 
+// ── DEBUG: See raw call details ──
+app.get('/clari/debug-call/:callId', async (req, res) => {
+  try {
+    const url = `${CLARI_BASE}/call-transcript?id=${req.params.callId}`;
+    const response = await fetch(url, { headers: CLARI_HEADERS });
+    const text = await response.text();
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ status: response.status, url, body: text.slice(0, 3000) }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── CLARI: Get call details + transcript ──
 app.get('/clari/calls/:callId/transcript', async (req, res) => {
   try {
-    const url = `${CLARI_BASE}/call-details?id=${req.params.callId}`;
-    const response = await fetch(url, { headers: CLARI_HEADERS });
-    const text = await response.text();
-    if (!response.ok) return res.status(response.status).json({ error: text });
-    res.json(JSON.parse(text));
+    // Try transcript endpoint first
+    const transcriptUrl = `${CLARI_BASE}/call-transcript?id=${req.params.callId}`;
+    const transcriptResp = await fetch(transcriptUrl, { headers: CLARI_HEADERS });
+    
+    if (transcriptResp.ok) {
+      const text = await transcriptResp.text();
+      try {
+        const data = JSON.parse(text);
+        return res.json(data);
+      } catch(e) {
+        // Return as plain text transcript
+        return res.json({ transcript: text });
+      }
+    }
+
+    // Fallback: try call-details
+    const detailsUrl = `${CLARI_BASE}/call-details?id=${req.params.callId}`;
+    const detailsResp = await fetch(detailsUrl, { headers: CLARI_HEADERS });
+    const detailsText = await detailsResp.text();
+    
+    if (!detailsResp.ok) return res.status(detailsResp.status).json({ error: detailsText });
+    
+    const details = JSON.parse(detailsText);
+    
+    // Try to extract transcript from various possible fields
+    const transcript = details.transcript 
+      || details.transcription 
+      || details.call_transcript
+      || (details.utterances && details.utterances.map(u => `${u.speaker||u.name||''}: ${u.text||u.content||''}`).join('\n'))
+      || (details.segments && details.segments.map(s => `${s.speaker||''}: ${s.text||''}`).join('\n'));
+    
+    if (transcript) {
+      return res.json({ transcript });
+    }
+    
+    // Return raw so the app can try to parse it
+    res.json(details);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
