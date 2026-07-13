@@ -179,4 +179,12 @@ app.post('/ai/analyze', async (req, res) => {
   }
 });
 app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
-app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`Port ${PORT} in use, retrying...`);
+    setTimeout(() => server.listen(PORT), 1000);
+  } else {
+    throw err;
+  }
+});
