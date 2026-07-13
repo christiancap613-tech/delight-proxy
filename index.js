@@ -17,7 +17,7 @@ const CLARI_HEADERS = {
 };
 
 app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'Delight Proxy' });
@@ -178,5 +178,5 @@ app.post('/ai/analyze', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
+app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
 app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
