@@ -69,14 +69,12 @@ app.get('/clari/calls', async (req, res) => {
       const calls = data.calls || [];
       if (!calls.length) break;
 
-      // Filter by userId if provided
       const filtered = user_id
         ? calls.filter(call => (call.users || []).some(u => u.userId === user_id))
         : calls;
 
       allCalls = allCalls.concat(filtered);
 
-      // Stop if we have enough filtered results or no more pages
       if (!data.pagination?.hasMore || allCalls.length >= 25) break;
       skip += batchSize;
     }
@@ -111,49 +109,42 @@ app.get('/clari/debug-call/:callId', async (req, res) => {
 // ── CLARI: Get call details + transcript ──
 app.get('/clari/calls/:callId/transcript', async (req, res) => {
   try {
-    // Try transcript endpoint first
     const transcriptUrl = `${CLARI_BASE}/call-transcript?id=${req.params.callId}`;
     const transcriptResp = await fetch(transcriptUrl, { headers: CLARI_HEADERS });
-    
+
     if (transcriptResp.ok) {
       const text = await transcriptResp.text();
       try {
         const data = JSON.parse(text);
         return res.json(data);
       } catch(e) {
-        // Return as plain text transcript
         return res.json({ transcript: text });
       }
     }
 
-    // Fallback: try call-details
     const detailsUrl = `${CLARI_BASE}/call-details?id=${req.params.callId}`;
     const detailsResp = await fetch(detailsUrl, { headers: CLARI_HEADERS });
     const detailsText = await detailsResp.text();
-    
+
     if (!detailsResp.ok) return res.status(detailsResp.status).json({ error: detailsText });
-    
+
     const details = JSON.parse(detailsText);
-    
-    // Try to extract transcript from various possible fields
-    const transcript = details.transcript 
-      || details.transcription 
+
+    const transcript = details.transcript
+      || details.transcription
       || details.call_transcript
       || (details.utterances && details.utterances.map(u => `${u.speaker||u.name||''}: ${u.text||u.content||''}`).join('\n'))
       || (details.segments && details.segments.map(s => `${s.speaker||''}: ${s.text||''}`).join('\n'));
-    
-    if (transcript) {
-      return res.json({ transcript });
-    }
-    
-    // Return raw so the app can try to parse it
+
+    if (transcript) return res.json({ transcript });
+
     res.json(details);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ── ANTHROPIC: AI analysis ──
+// ── ANTHROPIC: AI analysis (scoring app) ──
 app.post('/ai/analyze', async (req, res) => {
   try {
     const { system, transcript } = req.body;
@@ -178,7 +169,28 @@ app.post('/ai/analyze', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
+
+// ── ANTHROPIC: Pipeline review (full passthrough) ──
+app.post('/anthropic', async (req, res) => {
+  try {
+    if (!ANTHROPIC_KEY) return res.status(500).json({ error: 'ANTHROPIC_KEY not configured' });
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const server = app.listen(PORT, () => console.log(`Delight proxy running on port ${PORT}`));
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
